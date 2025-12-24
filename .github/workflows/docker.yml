@@ -63,7 +63,11 @@ jobs:
       - name: Extract Caddy version
         id: extract
         run: |
-          VERSION=$(docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest caddy version | awk '{print $1}' | sed 's/^v//')
+          VERSION=$(docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest version | awk '{print $1}' | sed 's/^v//')
+          if [ -z "$VERSION" ]; then
+            echo "Failed to extract Caddy version" >&2
+            exit 1
+          fi
           echo "CADDY_VERSION=$VERSION" >> $GITHUB_ENV
           echo "Caddy version: $VERSION"
 
