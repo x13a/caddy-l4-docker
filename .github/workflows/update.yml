@@ -6,8 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/caddy-l4
+  REGISTRY: dhi.io
 
 jobs:
   check:
@@ -23,7 +22,7 @@ jobs:
       - name: Login to DHI
         uses: docker/login-action@v3
         with:
-          registry: dhi.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
 
@@ -31,11 +30,11 @@ jobs:
         id: check
         run: |
           set -euo pipefail
-          docker pull dhi.io/caddy:2
-          UPSTREAM_VERSION=$(docker image inspect dhi.io/caddy:2 --format '{{ index .Config.Labels "com.docker.dhi.version" }}' 2>/dev/null || true)
+          docker pull ${{ env.REGISTRY }}/caddy:2
+          UPSTREAM_VERSION=$(docker image inspect ${{ env.REGISTRY }}/caddy:2 --format '{{ index .Config.Labels "com.docker.dhi.version" }}' 2>/dev/null || true)
           UPSTREAM_VERSION=$(printf '%s' "$UPSTREAM_VERSION" | sed 's/^v//' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
           if [ -z "$UPSTREAM_VERSION" ]; then
-            echo "Failed to read upstream version label from dhi.io/caddy:2" >&2
+            echo "Failed to read upstream version label from ${{ env.REGISTRY }}/caddy:2" >&2
             exit 1
           fi
           CURRENT_VERSION=$(cat version.txt | tr -d '[:space:]')
