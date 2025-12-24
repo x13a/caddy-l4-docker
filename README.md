@@ -3,7 +3,7 @@
 Caddy with L4 plugin Docker hardened image
 
 This repository automatically builds a Caddy with L4 plugin Docker hardened image. The workflow 
-publishes a package using the same tag as the latest upstream.
+publishes a package using the same tag as the latest upstream version.
 
 ## Usage
 
