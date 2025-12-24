@@ -1,0 +1,58 @@
+name: Check for upstream Caddy updates
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/caddy-l4
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Login to DHI
+        uses: docker/login-action@v3
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DHI_USERNAME }}
+          password: ${{ secrets.DHI_TOKEN }}
+
+      - name: Check upstream Caddy version
+        id: check
+        run: |
+          set -euo pipefail
+          docker pull dhi.io/caddy:2
+          UPSTREAM_VERSION=$(docker image inspect dhi.io/caddy:2 --format '{{ index .Config.Labels "com.docker.dhi.version" }}' 2>/dev/null || true)
+          UPSTREAM_VERSION=$(printf '%s' "$UPSTREAM_VERSION" | sed 's/^v//' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [ -z "$UPSTREAM_VERSION" ]; then
+            echo "Failed to read upstream version label from dhi.io/caddy:2" >&2
+            exit 1
+          fi
+          CURRENT_VERSION=$(cat version.txt | tr -d '[:space:]')
+          echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$UPSTREAM_VERSION" != "$CURRENT_VERSION" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "New version found: $UPSTREAM_VERSION (current: $CURRENT_VERSION)"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "No update needed: $CURRENT_VERSION"
+          fi
+
+      - name: Trigger build workflow
+        if: steps.check.outputs.should_build == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run ".github/workflows/docker.yml" \
+            -f caddy_version="${{ steps.check.outputs.upstream_version }}"
