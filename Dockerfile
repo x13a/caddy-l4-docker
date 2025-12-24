@@ -1,5 +1,10 @@
-FROM caddy:builder-alpine AS builder
-RUN xcaddy build --with github.com/mholt/caddy-l4
+FROM dhi.io/caddy:2-dev AS builder
 
-FROM caddy:latest
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+RUN CGO_ENABLED=0 go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
+WORKDIR /build
+RUN xcaddy build \
+    --with github.com/mholt/caddy-l4
+
+FROM dhi.io/caddy:2
+COPY --from=builder /build/caddy /usr/bin/caddy
