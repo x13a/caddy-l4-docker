@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Build even when upstream versions have not changed"
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: dhi.io
@@ -30,6 +36,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_BUILD: ${{ inputs.force_build }}
         run: |
           set -euo pipefail
           docker pull ${{ env.REGISTRY }}/caddy:2
@@ -52,11 +59,15 @@ jobs:
           if [ -f l4-version.txt ]; then
             L4_CURRENT_VERSION=$(cat l4-version.txt | tr -d '[:space:]')
           fi
-          if [ "$CADDY_UPSTREAM_VERSION" != "$CADDY_CURRENT_VERSION" ] || [ "$L4_UPSTREAM_VERSION" != "$L4_CURRENT_VERSION" ]; then
+          if [ "$FORCE_BUILD" = "true" ] || [ "$CADDY_UPSTREAM_VERSION" != "$CADDY_CURRENT_VERSION" ] || [ "$L4_UPSTREAM_VERSION" != "$L4_CURRENT_VERSION" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "New versions: Caddy $CADDY_UPSTREAM_VERSION / L4 $L4_UPSTREAM_VERSION (current: $CADDY_CURRENT_VERSION / $L4_CURRENT_VERSION)"
             echo "caddy_upstream_version=$CADDY_UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
             echo "l4_upstream_version=$L4_UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+            if [ "$FORCE_BUILD" = "true" ]; then
+              echo "Force build: Caddy $CADDY_UPSTREAM_VERSION / L4 $L4_UPSTREAM_VERSION"
+            else
+              echo "New versions: Caddy $CADDY_UPSTREAM_VERSION / L4 $L4_UPSTREAM_VERSION (current: $CADDY_CURRENT_VERSION / $L4_CURRENT_VERSION)"
+            fi
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
             echo "No update needed: Caddy $CADDY_CURRENT_VERSION / L4 $L4_CURRENT_VERSION"
