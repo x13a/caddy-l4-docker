@@ -52,6 +52,28 @@ jobs:
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: Prepare version tags
+        id: versions
+        env:
+          CADDY_VERSION: ${{ inputs.caddy_version }}
+          L4_VERSION: ${{ inputs.l4_version }}
+        run: |
+          if [[ "$CADDY_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "caddy_major=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "caddy_minor=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Invalid Caddy version: $CADDY_VERSION" >&2
+            exit 1
+          fi
+
+          if [[ "$L4_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "l4_major=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "l4_minor=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Invalid L4 version: $L4_VERSION" >&2
+            exit 1
+          fi
+
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v7
@@ -64,7 +86,14 @@ jobs:
             L4_VERSION=${{ inputs.l4_version }}
           tags: |
             ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.versions.outputs.caddy_major }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.versions.outputs.caddy_minor }}
             ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.caddy_version }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-${{ steps.versions.outputs.caddy_major }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-${{ steps.versions.outputs.caddy_minor }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-${{ inputs.caddy_version }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:l4-${{ steps.versions.outputs.l4_major }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:l4-${{ steps.versions.outputs.l4_minor }}
             ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:l4-${{ inputs.l4_version }}
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
