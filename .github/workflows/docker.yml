@@ -7,6 +7,10 @@ on:
         description: "Caddy version to build/tag (e.g., 2.10.2)"
         required: true
         type: string
+      l4_version:
+        description: "L4 version to build (e.g., 0.1.2)"
+        required: true
+        type: string
 
 env:
   GHCR_REGISTRY: ghcr.io
@@ -20,22 +24,23 @@ jobs:
     permissions:
       contents: write
       packages: write
-      attestations: write
       id-token: write
+      attestations: write
+      artifact-metadata: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to DHI
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.DHI_REGISTRY }}
           username: ${{ secrets.DHI_USERNAME }}
@@ -43,36 +48,44 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           push: true
           build-args: |
-            CADDY_VERSION=v${{ inputs.caddy_version }}
+            CADDY_VERSION=${{ inputs.caddy_version }}
+            L4_VERSION=${{ inputs.l4_version }}
           tags: |
             ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.caddy_version }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:l4-${{ inputs.l4_version }}
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Update version.txt
+      - name: Update built versions
+        env:
+          CADDY_VERSION: ${{ inputs.caddy_version }}
+          L4_VERSION: ${{ inputs.l4_version }}
         run: |
-          echo "${{ inputs.caddy_version }}" > version.txt
+          echo "$CADDY_VERSION" > caddy-version.txt
+          echo "$L4_VERSION" > l4-version.txt
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git add version.txt
-          git commit -m "chore: update caddy version to ${{ inputs.caddy_version }}"
-          git push
+          git add caddy-version.txt l4-version.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update caddy to $CADDY_VERSION and l4 to $L4_VERSION"
+            git push
+          fi
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest@v4
         with:
           subject-name: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}

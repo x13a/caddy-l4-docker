@@ -7,8 +7,9 @@ RUN CGO_ENABLED=0 GOBIN=/usr/local/bin go install github.com/caddyserver/xcaddy/
 
 WORKDIR /build
 ARG CADDY_VERSION
-RUN xcaddy build ${CADDY_VERSION} \
-    --with github.com/mholt/caddy-l4
+ARG L4_VERSION
+RUN xcaddy build v${CADDY_VERSION} \
+    --with github.com/mholt/caddy-l4@v${L4_VERSION}
 
 FROM dhi.io/caddy:2
 COPY --from=builder /build/caddy /usr/bin/caddy

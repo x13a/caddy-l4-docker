@@ -1,4 +1,4 @@
-name: Check for upstream Caddy updates
+name: Check for upstream Caddy and L4 updates
 
 on:
   schedule:
@@ -17,35 +17,49 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Login to DHI
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DHI_USERNAME }}
           password: ${{ secrets.DHI_TOKEN }}
 
-      - name: Check upstream Caddy version
+      - name: Check upstream Caddy and L4 versions
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           docker pull ${{ env.REGISTRY }}/caddy:2
-          UPSTREAM_VERSION=$(docker image inspect ${{ env.REGISTRY }}/caddy:2 --format '{{ index .Config.Labels "com.docker.dhi.version" }}' 2>/dev/null || true)
-          UPSTREAM_VERSION=$(printf '%s' "$UPSTREAM_VERSION" | sed 's/^v//' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
-          if [ -z "$UPSTREAM_VERSION" ]; then
-            echo "Failed to read upstream version label from ${{ env.REGISTRY }}/caddy:2" >&2
+          CADDY_UPSTREAM_VERSION=$(docker image inspect ${{ env.REGISTRY }}/caddy:2 --format '{{ index .Config.Labels "com.docker.dhi.version" }}' 2>/dev/null || true)
+          CADDY_UPSTREAM_VERSION=$(printf '%s' "$CADDY_UPSTREAM_VERSION" | sed 's/^v//' | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [ -z "$CADDY_UPSTREAM_VERSION" ]; then
+            echo "Failed to read Caddy upstream version label from ${{ env.REGISTRY }}/caddy:2" >&2
             exit 1
           fi
-          CURRENT_VERSION=$(cat version.txt | tr -d '[:space:]')
-          echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
-          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$UPSTREAM_VERSION" != "$CURRENT_VERSION" ]; then
+          CADDY_CURRENT_VERSION=""
+          if [ -f caddy-version.txt ]; then
+            CADDY_CURRENT_VERSION=$(cat caddy-version.txt | tr -d '[:space:]')
+          fi
+          L4_UPSTREAM_VERSION=$(gh api repos/mholt/caddy-l4/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//' || true)
+          if [ -z "$L4_UPSTREAM_VERSION" ] || [[ ! "$L4_UPSTREAM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Failed to read L4 upstream version from https://github.com/mholt/caddy-l4/releases/latest" >&2
+            exit 1
+          fi
+          L4_CURRENT_VERSION=""
+          if [ -f l4-version.txt ]; then
+            L4_CURRENT_VERSION=$(cat l4-version.txt | tr -d '[:space:]')
+          fi
+          if [ "$CADDY_UPSTREAM_VERSION" != "$CADDY_CURRENT_VERSION" ] || [ "$L4_UPSTREAM_VERSION" != "$L4_CURRENT_VERSION" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "New version found: $UPSTREAM_VERSION (current: $CURRENT_VERSION)"
+            echo "New versions: Caddy $CADDY_UPSTREAM_VERSION / L4 $L4_UPSTREAM_VERSION (current: $CADDY_CURRENT_VERSION / $L4_CURRENT_VERSION)"
+            echo "caddy_upstream_version=$CADDY_UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+            echo "l4_upstream_version=$L4_UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "No update needed: $CURRENT_VERSION"
+            echo "No update needed: Caddy $CADDY_CURRENT_VERSION / L4 $L4_CURRENT_VERSION"
           fi
 
       - name: Trigger build workflow
@@ -54,4 +68,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run ".github/workflows/docker.yml" \
-            -f caddy_version="${{ steps.check.outputs.upstream_version }}"
+            -f caddy_version="${{ steps.check.outputs.caddy_upstream_version }}" \
+            -f l4_version="${{ steps.check.outputs.l4_upstream_version }}"
